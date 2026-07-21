@@ -16,6 +16,12 @@ export const runParamsSchema = z.object({
   description: z.string().max(2000).default(""),
   /** Output language for topic/claim text; "auto" = dominant language of comments */
   outputLanguage: z.string().max(20).default("auto"),
+  /**
+   * Optional analyst lens: free-text instructions appended to the extraction and
+   * taxonomy prompts so the same comments can be analyzed under different optics
+   * (e.g. "focus on economic arguments", "map claims to policy asks").
+   */
+  customInstructions: z.string().max(2000).default(""),
 });
 
 export type RunParams = z.infer<typeof runParamsSchema>;

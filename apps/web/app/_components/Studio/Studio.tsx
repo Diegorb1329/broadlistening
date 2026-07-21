@@ -9,6 +9,7 @@ import {
   type CsvParseResult,
 } from "@broadlistening/pipeline/csv";
 import type { ProgressEvent } from "@broadlistening/pipeline/state";
+import { viewerUrl } from "@/lib/viewer";
 
 const MAX_WEB_COMMENTS = 200;
 const NONE = "__none__";
@@ -65,6 +66,7 @@ export default function Studio() {
   });
   const [title, setTitle] = useState("");
   const [language, setLanguage] = useState("auto");
+  const [lens, setLens] = useState("");
   const [truncateConsent, setTruncateConsent] = useState(false);
   const [publishing, setPublishing] = useState(false);
   const [published, setPublished] = useState<PublishResult | null>(null);
@@ -146,7 +148,12 @@ export default function Studio() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           comments,
-          params: { title: title.trim() || phase.fileName, description: "", outputLanguage: language },
+          params: {
+            title: title.trim() || phase.fileName,
+            description: "",
+            outputLanguage: language,
+            customInstructions: lens.trim(),
+          },
         }),
       });
       if (!res.ok) {
@@ -159,7 +166,7 @@ export default function Studio() {
     } catch (err) {
       setPhase({ kind: "error", message: err instanceof Error ? err.message : String(err) });
     }
-  }, [phase, title, language, streamProgress]);
+  }, [phase, title, language, lens, streamProgress]);
 
   const cancel = useCallback(async (runId: string) => {
     abortRef.current?.abort();
@@ -186,13 +193,11 @@ export default function Studio() {
     }
   }, []);
 
-  const viewReport = useCallback(
-    (runId: string) => {
-      const url = `${window.location.origin}/api/runs/${runId}/report`;
-      router.push(`/dashboard?report=${encodeURIComponent(url)}`);
-    },
-    [router],
-  );
+  // Viewing is delegated to broadlistening.org — this app doesn't duplicate the viewer.
+  const viewReport = useCallback((runId: string) => {
+    const url = `${window.location.origin}/api/runs/${runId}/report`;
+    window.open(viewerUrl(url), "_blank", "noopener");
+  }, []);
 
   const downloadReport = useCallback(async (runId: string) => {
     const res = await fetch(`/api/runs/${runId}/report`);
@@ -244,6 +249,8 @@ export default function Studio() {
               setTitle={setTitle}
               language={language}
               setLanguage={setLanguage}
+              lens={lens}
+              setLens={setLens}
               truncateConsent={truncateConsent}
               setTruncateConsent={setTruncateConsent}
               onMapping={(m) => remap(phase.csvText, phase.fileName, m)}
@@ -301,14 +308,15 @@ export default function Studio() {
                     <p className="kicker mb-2">Published to the network</p>
                     <p className="text-sm break-all mb-3" style={{ color: "var(--body)" }}>{published.atUri}</p>
                     <div className="flex flex-wrap gap-3">
-                      {published.viewerPath && (
-                        <button
-                          type="button"
+                      {published.blobUrl && (
+                        <a
                           className="btn-editorial px-4 py-2"
-                          onClick={() => router.push(published.viewerPath!)}
+                          href={viewerUrl(published.blobUrl)}
+                          target="_blank"
+                          rel="noreferrer"
                         >
                           View published report
-                        </button>
+                        </a>
                       )}
                       <button type="button" className="btn-editorial px-4 py-2" onClick={() => router.push("/analyses")}>
                         See all analyses
@@ -499,13 +507,15 @@ function ConfigurePanel(props: {
   setTitle: (v: string) => void;
   language: string;
   setLanguage: (v: string) => void;
+  lens: string;
+  setLens: (v: string) => void;
   truncateConsent: boolean;
   setTruncateConsent: (v: boolean) => void;
   onMapping: (m: CsvMapping) => void;
   onRun: () => void;
   onBack: () => void;
 }) {
-  const { phase, title, setTitle, language, setLanguage, truncateConsent, setTruncateConsent, onMapping, onRun, onBack } = props;
+  const { phase, title, setTitle, language, setLanguage, lens, setLens, truncateConsent, setTruncateConsent, onMapping, onRun, onBack } = props;
   const total = phase.parsed.comments.length;
   const overCap = total > MAX_WEB_COMMENTS;
   const canRun = total > 0 && (!overCap || truncateConsent);
@@ -585,6 +595,20 @@ function ConfigurePanel(props: {
         <div>
           <label className="kicker-muted block mb-1" htmlFor="bl-title">Report title</label>
           <input id="bl-title" className={inputCls} style={inputStyle} value={title} onChange={(e) => setTitle(e.target.value)} />
+        </div>
+        <div className="sm:col-span-2">
+          <label className="kicker-muted block mb-1" htmlFor="bl-lens">
+            Analysis lens <span style={{ textTransform: "none", letterSpacing: 0 }}>(optional)</span>
+          </label>
+          <textarea
+            id="bl-lens"
+            className={inputCls}
+            style={{ ...inputStyle, minHeight: "4.5rem", resize: "vertical" }}
+            placeholder='Steer the analysis, e.g. "focus on economic arguments and concrete policy asks" — quotes stay verbatim and nothing is invented.'
+            value={lens}
+            onChange={(e) => setLens(e.target.value)}
+            maxLength={2000}
+          />
         </div>
       </div>
 

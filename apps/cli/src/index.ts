@@ -27,6 +27,7 @@ program
   .option("--title <title>", "report title")
   .option("--description <desc>", "report description", "")
   .option("--language <lang>", "output language (ISO 639-1) or 'auto'", "auto")
+  .option("--instructions <text>", "analyst lens: extra instructions for extraction/taxonomy", "")
   .option("--limit <n>", "analyze only the first N comments", (v) => parseInt(v, 10))
   .option("--concurrency <n>", "concurrent LLM calls", (v) => parseInt(v, 10), 8)
   .option("--out <file>", "output report path (default: <csv>.report.json)")
@@ -86,6 +87,7 @@ program
           title: opts.title ?? basename(file).replace(/\.csv$/i, ""),
           description: opts.description,
           outputLanguage: opts.language,
+          customInstructions: opts.instructions,
         },
         concurrency: opts.concurrency,
         state,

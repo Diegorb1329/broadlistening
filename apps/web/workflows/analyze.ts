@@ -38,7 +38,7 @@ export async function analyzeWorkflow(
   let failed = 0;
   for (let i = 0; i < comments.length; i += BATCH_SIZE) {
     const batch = comments.slice(i, i + BATCH_SIZE);
-    const res = await extractBatchStep(batch, lang, done, failed, comments.length);
+    const res = await extractBatchStep(batch, lang, params.customInstructions, done, failed, comments.length);
     extraction = { ...extraction, ...res.extraction };
     done = res.done;
     failed = res.failed;
@@ -85,6 +85,7 @@ async function prepareStep(comments: InputComment[], params: RunParams): Promise
 async function extractBatchStep(
   batch: InputComment[],
   lang: string,
+  customInstructions: string | undefined,
   doneSoFar: number,
   failedSoFar: number,
   total: number,
@@ -97,6 +98,7 @@ async function extractBatchStep(
   try {
     const res = await extractCommentsBatch(makeClient(), batch, lang, {
       concurrency: WEB_CONCURRENCY,
+      customInstructions,
       onItem: (_id, ok) => {
         if (ok) done++;
         else failed++;

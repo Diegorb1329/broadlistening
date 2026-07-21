@@ -66,6 +66,7 @@ export async function extractCommentsBatch(
     concurrency?: number;
     /** existing entries (attempt counts carry over on retry passes) */
     existing?: Record<string, import("./state.js").CommentExtraction>;
+    customInstructions?: string;
     onItem?: (commentId: string, ok: boolean) => void;
   } = {},
 ): Promise<{
@@ -81,7 +82,7 @@ export async function extractCommentsBatch(
       attempts: (prev?.attempts ?? 0) + 1,
     };
     try {
-      const r = await extractClaims(client, comment.text, outputLanguage);
+      const r = await extractClaims(client, comment.text, outputLanguage, opts.customInstructions);
       usage.inputTokens += r.usage.inputTokens;
       usage.outputTokens += r.usage.outputTokens;
       entry.status = "done";
@@ -148,6 +149,7 @@ export async function runPipeline(opts: PipelineOptions): Promise<PipelineResult
       const res = await extractCommentsBatch(client, chunk, lang, {
         concurrency,
         existing: state.extraction,
+        customInstructions: params.customInstructions,
         onItem: (_id, ok) => {
           if (ok) done++;
           else failed++;
@@ -206,7 +208,7 @@ export async function runPipeline(opts: PipelineOptions): Promise<PipelineResult
   if (!state.taxonomy) {
     state.stage = "taxonomy";
     emit({ type: "stage", stage: "taxonomy" });
-    const r = await buildTaxonomy(client, allClaims.map((c) => c.title), lang);
+    const r = await buildTaxonomy(client, allClaims.map((c) => c.title), lang, params.customInstructions);
     addUsage(state, r.usage);
     // cardinality enforced in code (schema bounds break Gemini constrained decoding)
     const topics = r.data.topics

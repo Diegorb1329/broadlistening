@@ -14,6 +14,7 @@ function syntheticState() {
     title: "Test Run",
     description: "d",
     outputLanguage: "en",
+    customInstructions: "",
   });
   state.outputLanguage = "en";
   state.extraction["c1"] = {

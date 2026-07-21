@@ -86,11 +86,12 @@ export async function extractClaims(
   client: LLMClient,
   commentText: string,
   outputLanguage: string,
+  customInstructions?: string,
 ): Promise<CallResult<ExtractionOutput>> {
   return structuredCall(
     client,
     extractionOutputSchema,
-    extractionSystemPrompt(outputLanguage),
+    extractionSystemPrompt(outputLanguage, customInstructions),
     `Comment:\n"""\n${commentText}\n"""`,
   );
 }
@@ -99,11 +100,17 @@ export async function buildTaxonomy(
   client: LLMClient,
   claimTitles: string[],
   outputLanguage: string,
+  customInstructions?: string,
 ): Promise<CallResult<TaxonomyOutput>> {
   const prompt = `Claims (${claimTitles.length}):\n${claimTitles
     .map((t, i) => `${i + 1}. ${t}`)
     .join("\n")}`;
-  return structuredCall(client, taxonomyOutputSchema, taxonomySystemPrompt(outputLanguage), prompt);
+  return structuredCall(
+    client,
+    taxonomyOutputSchema,
+    taxonomySystemPrompt(outputLanguage, customInstructions),
+    prompt,
+  );
 }
 
 export interface TaxonomyForAssignment {

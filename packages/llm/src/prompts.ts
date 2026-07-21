@@ -4,7 +4,19 @@
  * quotes are ALWAYS verbatim from the source, whatever language it is in.
  */
 
-export function extractionSystemPrompt(outputLanguage: string): string {
+/**
+ * Optional analyst lens: appended to extraction/taxonomy prompts so users can
+ * analyze the same material under different optics. It may steer FOCUS and
+ * FRAMING but never overrides the integrity rules (verbatim quotes, quality
+ * gate, no invented claims).
+ */
+function lensBlock(customInstructions?: string): string {
+  const lens = customInstructions?.trim();
+  if (!lens) return "";
+  return `\n\nANALYST LENS (steers focus and framing only — the rules above always take precedence; quotes stay verbatim and no claims may be invented):\n${lens}`;
+}
+
+export function extractionSystemPrompt(outputLanguage: string, customInstructions?: string): string {
   return `You are a precise discourse analyst extracting claims from a public-consultation comment.
 
 Rules:
@@ -12,10 +24,10 @@ Rules:
 - QUALITY GATE: if the comment is vague, off-topic, pure emotion, spam, or contains no debatable position, return an empty claims list. Never invent claims.
 - Each claim needs a "quote": a VERBATIM excerpt copied character-for-character from the comment that supports the claim. Do not paraphrase, translate, trim words mid-way, or fix typos in the quote.
 - Write each claim "title" as one clear sentence in ${outputLanguage}. Make it understandable without the original comment ("Anonymized rides improve safety", not "The author agrees with this").
-- Detect the comment's language and report it as "lang" (ISO 639-1).`;
+- Detect the comment's language and report it as "lang" (ISO 639-1).${lensBlock(customInstructions)}`;
 }
 
-export function taxonomySystemPrompt(outputLanguage: string): string {
+export function taxonomySystemPrompt(outputLanguage: string, customInstructions?: string): string {
   return `You are organizing claims from a public consultation into a two-level topic map.
 
 You will receive a numbered list of claim titles. Propose topics (2-12) and subtopics (1-8 each) that:
@@ -23,7 +35,7 @@ You will receive a numbered list of claim titles. Propose topics (2-12) and subt
 - are specific enough to be meaningful ("Pricing transparency", not "General feedback");
 - together cover the material; do NOT create an "Other" topic (unmatched claims are handled separately);
 - have a one-sentence description each.
-Write all titles and descriptions in ${outputLanguage}. Aim for balanced topics; split anything that would swallow more than a third of all claims.`;
+Write all titles and descriptions in ${outputLanguage}. Aim for balanced topics; split anything that would swallow more than a third of all claims.${lensBlock(customInstructions)}`;
 }
 
 export function assignmentSystemPrompt(): string {
