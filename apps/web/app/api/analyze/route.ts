@@ -3,6 +3,7 @@ import { z } from "zod";
 import { start } from "workflow/api";
 import { inputCommentSchema, runParamsSchema } from "@broadlistening/schema";
 import { analyzeWorkflow } from "@/workflows/analyze";
+import { getSession } from "@/lib/session";
 
 /** Hosted-run cap (architecture §11): 200 comments, consented truncation client-side. */
 const MAX_WEB_COMMENTS = 200;
@@ -13,6 +14,11 @@ const bodySchema = z.object({
 });
 
 export async function POST(request: Request): Promise<Response> {
+  // Login-first: hosted runs require an authenticated ATProto session.
+  const session = await getSession();
+  if (!session.did) {
+    return NextResponse.json({ error: "not_authenticated" }, { status: 401 });
+  }
   let json: unknown;
   try {
     json = await request.json();

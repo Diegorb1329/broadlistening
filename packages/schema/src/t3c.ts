@@ -79,6 +79,8 @@ export const sourceSchema = z.object({
   id: z.string(),
   interview: z.string().optional(),
   data: sourceDataSchema,
+  /** External link for the source (ecocertain-style reports place it here too) */
+  source: z.string().optional(),
   url: z.string().optional(),
   datetime: z.string().optional(),
 });

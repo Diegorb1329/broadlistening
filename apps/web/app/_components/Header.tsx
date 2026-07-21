@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import React from "react";
 import { useSearch } from "./SearchContext";
 import ClaimSearchBar from "./BroadListening/ClaimSearchBar";
@@ -12,7 +13,14 @@ export interface HeaderProps {
   onMenuClick?: () => void;
 }
 
+const NAV_TABS = [
+  { href: "/", label: "Studio" },
+  { href: "/how-it-works", label: "How it works" },
+  { href: "/analyses", label: "Analyses" },
+] as const;
+
 const Header = ({ cta, onMenuClick }: HeaderProps) => {
+  const pathname = usePathname();
   const {
     setSearchQuery,
     timestampFilter,
@@ -54,9 +62,25 @@ const Header = ({ cta, onMenuClick }: HeaderProps) => {
               <span className="italic text-[var(--brand)]">Listening</span>
             </Link>
             <span className="hidden md:inline-block w-px h-5 bg-[var(--hairline)]" />
-            <span className="hidden md:inline text-[11px] tracking-[0.2em] uppercase text-[var(--muted-ink)]">
-              Dashboard
-            </span>
+            <div className="hidden md:flex items-center gap-5">
+              {NAV_TABS.map((tab) => {
+                const active =
+                  tab.href === "/" ? pathname === "/" : pathname.startsWith(tab.href);
+                return (
+                  <Link
+                    key={tab.href}
+                    href={tab.href}
+                    className={`text-[11px] tracking-[0.2em] uppercase transition-colors ${
+                      active
+                        ? "text-[var(--brand)]"
+                        : "text-[var(--muted-ink)] hover:text-[var(--ink)]"
+                    }`}
+                  >
+                    {tab.label}
+                  </Link>
+                );
+              })}
+            </div>
           </div>
 
           {/* Right — Desktop */}

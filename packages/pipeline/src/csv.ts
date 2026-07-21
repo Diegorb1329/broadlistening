@@ -17,15 +17,31 @@ export interface CsvParseResult {
   columns: string[];
 }
 
-/** Best-effort auto-detection of the text column for common headers. */
-export function detectTextColumn(columns: string[]): string | undefined {
-  const candidates = ["comment", "text", "comment-body", "response", "answer", "body", "message"];
+function detectColumn(columns: string[], candidates: string[]): string | undefined {
   const lower = columns.map((c) => c.toLowerCase().trim());
   for (const cand of candidates) {
     const idx = lower.indexOf(cand);
     if (idx !== -1) return columns[idx];
   }
   return undefined;
+}
+
+/** Best-effort auto-detection of the text column for common headers. */
+export function detectTextColumn(columns: string[]): string | undefined {
+  return detectColumn(columns, ["comment", "text", "comment-body", "response", "answer", "body", "message"]);
+}
+
+/** Auto-detect the full column mapping (text, id, author, url, timestamp). */
+export function detectMapping(columns: string[]): CsvMapping | undefined {
+  const textColumn = detectTextColumn(columns);
+  if (!textColumn) return undefined;
+  return {
+    textColumn,
+    idColumn: detectColumn(columns, ["id", "comment_id", "row_id"]),
+    authorColumn: detectColumn(columns, ["author", "name", "interview", "user", "speaker", "participant", "handle"]),
+    urlColumn: detectColumn(columns, ["url", "link", "source_url", "permalink", "source"]),
+    timestampColumn: detectColumn(columns, ["timestamp", "date", "created_at", "datetime", "created", "time"]),
+  };
 }
 
 export function parseCommentsCsv(csvText: string, mapping: CsvMapping): CsvParseResult {

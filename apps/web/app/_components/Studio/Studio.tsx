@@ -3,28 +3,22 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
-  detectTextColumn,
+  detectMapping,
   parseCommentsCsv,
+  type CsvMapping,
   type CsvParseResult,
 } from "@broadlistening/pipeline/csv";
 import type { ProgressEvent } from "@broadlistening/pipeline/state";
 
 const MAX_WEB_COMMENTS = 200;
+const NONE = "__none__";
 
 type Phase =
   | { kind: "upload" }
-  | { kind: "configure"; fileName: string; csvText: string; parsed: CsvParseResult; textColumn: string }
+  | { kind: "configure"; fileName: string; csvText: string; parsed: CsvParseResult; mapping: CsvMapping }
   | { kind: "running"; runId: string }
   | { kind: "done"; runId: string; topics: number; failures: number }
   | { kind: "error"; message: string };
-
-interface StageProgress {
-  stage: string;
-  extractDone: number;
-  extractFailed: number;
-  extractTotal: number;
-  warnings: string[];
-}
 
 interface SessionInfo {
   authenticated: boolean;
@@ -40,6 +34,14 @@ interface PublishResult {
   viewerPath?: string;
 }
 
+interface StageProgress {
+  stage: string;
+  extractDone: number;
+  extractFailed: number;
+  extractTotal: number;
+  warnings: string[];
+}
+
 const STAGES = ["prepare", "extract", "taxonomy", "assign", "consolidate", "assemble"] as const;
 const STAGE_LABELS: Record<string, string> = {
   prepare: "Preparing",
@@ -52,6 +54,7 @@ const STAGE_LABELS: Record<string, string> = {
 
 export default function Studio() {
   const router = useRouter();
+  const [session, setSession] = useState<SessionInfo | null>(null);
   const [phase, setPhase] = useState<Phase>({ kind: "upload" });
   const [progress, setProgress] = useState<StageProgress>({
     stage: "prepare",
@@ -63,7 +66,6 @@ export default function Studio() {
   const [title, setTitle] = useState("");
   const [language, setLanguage] = useState("auto");
   const [truncateConsent, setTruncateConsent] = useState(false);
-  const [session, setSession] = useState<SessionInfo | null>(null);
   const [publishing, setPublishing] = useState(false);
   const [published, setPublished] = useState<PublishResult | null>(null);
   const [publishError, setPublishError] = useState<string | null>(null);
@@ -76,71 +78,22 @@ export default function Studio() {
       .catch(() => setSession({ authenticated: false }));
   }, []);
 
-  const publish = useCallback(async (runId: string) => {
-    setPublishing(true);
-    setPublishError(null);
-    try {
-      const res = await fetch("/api/publish", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ runId }),
-      });
-      const body = await res.json();
-      if (!res.ok) throw new Error(body.error ?? `HTTP ${res.status}`);
-      setPublished(body as PublishResult);
-    } catch (err) {
-      setPublishError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setPublishing(false);
-    }
-  }, []);
-
   const onFile = useCallback(async (file: File) => {
     const csvText = await file.text();
-    const probe = parseCommentsCsv(csvText, { textColumn: "__none__" });
-    const detected = detectTextColumn(probe.columns) ?? probe.columns[0] ?? "";
-    const parsed = parseCommentsCsv(csvText, { textColumn: detected, idColumn: probe.columns.find((c) => c.toLowerCase() === "id") });
+    const probe = parseCommentsCsv(csvText, { textColumn: NONE });
+    const mapping = detectMapping(probe.columns) ?? { textColumn: probe.columns[0] ?? "" };
+    const parsed = parseCommentsCsv(csvText, mapping);
     setTitle(file.name.replace(/\.csv$/i, "").replace(/[-_]+/g, " "));
-    setPhase({ kind: "configure", fileName: file.name, csvText, parsed, textColumn: detected });
+    setPhase({ kind: "configure", fileName: file.name, csvText, parsed, mapping });
   }, []);
 
-  const reparse = useCallback(
-    (csvText: string, fileName: string, textColumn: string) => {
-      const probe = parseCommentsCsv(csvText, { textColumn: "__none__" });
-      const parsed = parseCommentsCsv(csvText, {
-        textColumn,
-        idColumn: probe.columns.find((c) => c.toLowerCase() === "id"),
-      });
-      setPhase({ kind: "configure", fileName, csvText, parsed, textColumn });
+  const remap = useCallback(
+    (csvText: string, fileName: string, mapping: CsvMapping) => {
+      const parsed = parseCommentsCsv(csvText, mapping);
+      setPhase({ kind: "configure", fileName, csvText, parsed, mapping });
     },
     [],
   );
-
-  const run = useCallback(async () => {
-    if (phase.kind !== "configure") return;
-    const all = phase.parsed.comments;
-    const comments = all.slice(0, MAX_WEB_COMMENTS);
-    setProgress({ stage: "prepare", extractDone: 0, extractFailed: 0, extractTotal: comments.length, warnings: [] });
-    try {
-      const res = await fetch("/api/analyze", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          comments,
-          params: { title: title.trim() || phase.fileName, description: "", outputLanguage: language },
-        }),
-      });
-      if (!res.ok) {
-        const body = (await res.json().catch(() => ({}))) as { error?: string; detail?: string };
-        throw new Error(body.detail ?? body.error ?? `HTTP ${res.status}`);
-      }
-      const { runId } = (await res.json()) as { runId: string };
-      setPhase({ kind: "running", runId });
-      void streamProgress(runId);
-    } catch (err) {
-      setPhase({ kind: "error", message: err instanceof Error ? err.message : String(err) });
-    }
-  }, [phase, title, language]);
 
   const streamProgress = useCallback(async (runId: string) => {
     const abort = new AbortController();
@@ -171,7 +124,6 @@ export default function Studio() {
           setProgress((p) => applyEvent(p, event as ProgressEvent));
         }
       }
-      // Stream ended without a done event — check final status once.
       const status = await fetch(`/api/runs/${runId}`).then((r) => r.json());
       if (status.status === "completed") {
         setPhase({ kind: "done", runId, topics: 0, failures: 0 });
@@ -184,10 +136,54 @@ export default function Studio() {
     }
   }, []);
 
+  const run = useCallback(async () => {
+    if (phase.kind !== "configure") return;
+    const comments = phase.parsed.comments.slice(0, MAX_WEB_COMMENTS);
+    setProgress({ stage: "prepare", extractDone: 0, extractFailed: 0, extractTotal: comments.length, warnings: [] });
+    try {
+      const res = await fetch("/api/analyze", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          comments,
+          params: { title: title.trim() || phase.fileName, description: "", outputLanguage: language },
+        }),
+      });
+      if (!res.ok) {
+        const body = (await res.json().catch(() => ({}))) as { error?: string; detail?: string };
+        throw new Error(body.detail ?? body.error ?? `HTTP ${res.status}`);
+      }
+      const { runId } = (await res.json()) as { runId: string };
+      setPhase({ kind: "running", runId });
+      void streamProgress(runId);
+    } catch (err) {
+      setPhase({ kind: "error", message: err instanceof Error ? err.message : String(err) });
+    }
+  }, [phase, title, language, streamProgress]);
+
   const cancel = useCallback(async (runId: string) => {
     abortRef.current?.abort();
     await fetch(`/api/runs/${runId}/cancel`, { method: "POST" }).catch(() => {});
     setPhase({ kind: "upload" });
+  }, []);
+
+  const publish = useCallback(async (runId: string) => {
+    setPublishing(true);
+    setPublishError(null);
+    try {
+      const res = await fetch("/api/publish", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ runId }),
+      });
+      const body = await res.json();
+      if (!res.ok) throw new Error(body.error ?? `HTTP ${res.status}`);
+      setPublished(body as PublishResult);
+    } catch (err) {
+      setPublishError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setPublishing(false);
+    }
   }, []);
 
   const viewReport = useCallback(
@@ -208,6 +204,12 @@ export default function Studio() {
     URL.revokeObjectURL(a.href);
   }, []);
 
+  const logout = useCallback(async () => {
+    await fetch("/api/logout", { method: "POST" }).catch(() => {});
+    setSession({ authenticated: false });
+    setPhase({ kind: "upload" });
+  }, []);
+
   return (
     <div className="mx-auto max-w-3xl px-6 py-16">
       <p className="kicker mb-3">Broad Listening · Studio</p>
@@ -216,123 +218,142 @@ export default function Studio() {
       </h1>
       <p className="mb-10" style={{ color: "var(--body)" }}>
         Upload a CSV of comments. Claims are extracted, organized into topics, and
-        assembled into a report you can explore, download, and publish.
+        assembled into a report you can explore, download, and publish to the
+        AT&nbsp;Protocol network.
       </p>
 
-      {phase.kind === "upload" && <UploadZone onFile={onFile} />}
-
-      {phase.kind === "configure" && (
-        <ConfigurePanel
-          phase={phase}
-          title={title}
-          setTitle={setTitle}
-          language={language}
-          setLanguage={setLanguage}
-          truncateConsent={truncateConsent}
-          setTruncateConsent={setTruncateConsent}
-          onColumnChange={(col) => reparse(phase.csvText, phase.fileName, col)}
-          onRun={run}
-          onBack={() => setPhase({ kind: "upload" })}
-        />
+      {/* Login gate — the first thing users see */}
+      {session === null && (
+        <div className="card-editorial py-10 text-center">
+          <p className="kicker">Loading session…</p>
+        </div>
       )}
 
-      {phase.kind === "running" && (
-        <RunningPanel progress={progress} onCancel={() => cancel(phase.runId)} />
-      )}
+      {session !== null && !session.authenticated && <LoginHero />}
 
-      {phase.kind === "done" && (
-        <div className="card-editorial">
-          <p className="kicker mb-4">Analysis complete</p>
-          <div className="flex gap-10 mb-6">
-            <div className="stat-column">
-              <div className="stat-num">{phase.topics || "—"}</div>
-              <div className="stat-label">Topics</div>
-            </div>
-            <div className="stat-column">
-              <div className="stat-num">{progress.extractTotal}</div>
-              <div className="stat-label">Comments</div>
-            </div>
-            {phase.failures > 0 && (
-              <div className="stat-column">
-                <div className="stat-num" style={{ color: "var(--signal)" }}>{phase.failures}</div>
-                <div className="stat-label">Failed</div>
-              </div>
-            )}
-          </div>
-          <div className="flex flex-wrap gap-3">
-            <button type="button" className="btn-editorial btn-editorial-primary px-4 py-2" onClick={() => viewReport(phase.runId)}>
-              View report
-            </button>
-            <button type="button" className="btn-editorial px-4 py-2" onClick={() => downloadReport(phase.runId)}>
-              Download JSON
-            </button>
-            <button
-              type="button"
-              className="btn-editorial px-4 py-2"
-              onClick={() => {
-                setPublished(null);
-                setPublishError(null);
-                setPhase({ kind: "upload" });
-              }}
-            >
-              New analysis
-            </button>
-          </div>
+      {session?.authenticated && (
+        <>
+          <SessionStrip session={session} onLogout={logout} />
 
-          <div className="mt-8 border-t pt-6" style={{ borderColor: "var(--hairline)" }}>
-            {published ? (
-              <div>
-                <p className="kicker mb-2">Published to the network</p>
-                <p className="text-sm break-all mb-3" style={{ color: "var(--body)" }}>{published.atUri}</p>
-                {published.viewerPath && (
-                  <button
-                    type="button"
-                    className="btn-editorial px-4 py-2"
-                    onClick={() => router.push(published.viewerPath!)}
-                  >
-                    View published report
-                  </button>
+          {phase.kind === "upload" && <UploadZone onFile={onFile} />}
+
+          {phase.kind === "configure" && (
+            <ConfigurePanel
+              phase={phase}
+              title={title}
+              setTitle={setTitle}
+              language={language}
+              setLanguage={setLanguage}
+              truncateConsent={truncateConsent}
+              setTruncateConsent={setTruncateConsent}
+              onMapping={(m) => remap(phase.csvText, phase.fileName, m)}
+              onRun={run}
+              onBack={() => setPhase({ kind: "upload" })}
+            />
+          )}
+
+          {phase.kind === "running" && (
+            <RunningPanel progress={progress} onCancel={() => cancel(phase.runId)} />
+          )}
+
+          {phase.kind === "done" && (
+            <div className="card-editorial">
+              <p className="kicker mb-4">Analysis complete</p>
+              <div className="flex gap-10 mb-6">
+                <div className="stat-column">
+                  <div className="stat-num">{phase.topics || "—"}</div>
+                  <div className="stat-label">Topics</div>
+                </div>
+                <div className="stat-column">
+                  <div className="stat-num">{progress.extractTotal}</div>
+                  <div className="stat-label">Comments</div>
+                </div>
+                {phase.failures > 0 && (
+                  <div className="stat-column">
+                    <div className="stat-num" style={{ color: "var(--signal)" }}>{phase.failures}</div>
+                    <div className="stat-label">Failed</div>
+                  </div>
                 )}
               </div>
-            ) : session?.authenticated ? (
-              <div>
-                <p className="text-sm mb-3" style={{ color: "var(--body)" }}>
-                  Publishing places this report <strong>permanently and publicly</strong> in
-                  your AT&nbsp;Protocol repository as <span style={{ color: "var(--brand)" }}>@{session.handle}</span>.
-                </p>
-                {publishError && (
-                  <p className="text-sm mb-3" style={{ color: "var(--signal)" }}>{publishError}</p>
-                )}
+              <div className="flex flex-wrap gap-3">
+                <button type="button" className="btn-editorial btn-editorial-primary px-4 py-2" onClick={() => viewReport(phase.runId)}>
+                  View report
+                </button>
+                <button type="button" className="btn-editorial px-4 py-2" onClick={() => downloadReport(phase.runId)}>
+                  Download JSON
+                </button>
                 <button
                   type="button"
-                  className="btn-editorial btn-editorial-primary px-4 py-2"
-                  disabled={publishing}
-                  onClick={() => publish(phase.runId)}
+                  className="btn-editorial px-4 py-2"
+                  onClick={() => {
+                    setPublished(null);
+                    setPublishError(null);
+                    setPhase({ kind: "upload" });
+                  }}
                 >
-                  {publishing ? "Publishing…" : "Publish to ATProto"}
+                  New analysis
                 </button>
               </div>
-            ) : (
-              <LoginPanel />
-            )}
-          </div>
-        </div>
-      )}
 
-      {phase.kind === "error" && (
-        <div className="card-editorial" style={{ borderLeft: "3px solid var(--signal)" }}>
-          <p className="kicker mb-2" style={{ color: "var(--signal)" }}>Something went wrong</p>
-          <p className="mb-4" style={{ color: "var(--body)" }}>{phase.message}</p>
-          <button type="button" className="btn-editorial px-4 py-2" onClick={() => setPhase({ kind: "upload" })}>
-            Start over
-          </button>
-        </div>
+              <div className="mt-8 border-t pt-6" style={{ borderColor: "var(--hairline)" }}>
+                {published ? (
+                  <div>
+                    <p className="kicker mb-2">Published to the network</p>
+                    <p className="text-sm break-all mb-3" style={{ color: "var(--body)" }}>{published.atUri}</p>
+                    <div className="flex flex-wrap gap-3">
+                      {published.viewerPath && (
+                        <button
+                          type="button"
+                          className="btn-editorial px-4 py-2"
+                          onClick={() => router.push(published.viewerPath!)}
+                        >
+                          View published report
+                        </button>
+                      )}
+                      <button type="button" className="btn-editorial px-4 py-2" onClick={() => router.push("/analyses")}>
+                        See all analyses
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div>
+                    <p className="text-sm mb-3" style={{ color: "var(--body)" }}>
+                      Publishing places this report <strong>permanently and publicly</strong> in
+                      your AT&nbsp;Protocol repository as <span style={{ color: "var(--brand)" }}>@{session.handle}</span>.
+                    </p>
+                    {publishError && (
+                      <p className="text-sm mb-3" style={{ color: "var(--signal)" }}>{publishError}</p>
+                    )}
+                    <button
+                      type="button"
+                      className="btn-editorial btn-editorial-primary px-4 py-2"
+                      disabled={publishing}
+                      onClick={() => publish(phase.runId)}
+                    >
+                      {publishing ? "Publishing…" : "Publish to ATProto"}
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {phase.kind === "error" && (
+            <div className="card-editorial" style={{ borderLeft: "3px solid var(--signal)" }}>
+              <p className="kicker mb-2" style={{ color: "var(--signal)" }}>Something went wrong</p>
+              <p className="mb-4" style={{ color: "var(--body)" }}>{phase.message}</p>
+              <button type="button" className="btn-editorial px-4 py-2" onClick={() => setPhase({ kind: "upload" })}>
+                Start over
+              </button>
+            </div>
+          )}
+        </>
       )}
     </div>
   );
 }
 
-function LoginPanel() {
+function LoginHero() {
   const [handle, setHandle] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -344,7 +365,7 @@ function LoginPanel() {
       const res = await fetch("/api/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ handle, returnTo: window.location.pathname }),
+        body: JSON.stringify({ handle, returnTo: "/" }),
       });
       const body = await res.json();
       if (!res.ok) throw new Error(body.error ?? `HTTP ${res.status}`);
@@ -356,10 +377,15 @@ function LoginPanel() {
   }, [handle]);
 
   return (
-    <div>
-      <p className="text-sm mb-3" style={{ color: "var(--body)" }}>
-        Sign in with Bluesky to publish this report to your own AT&nbsp;Protocol
-        repository (publishing is public).
+    <div className="card-editorial">
+      <p className="kicker mb-3">Step 1 · Sign in</p>
+      <p className="font-serif text-xl mb-2" style={{ fontFamily: "var(--font-playfair)" }}>
+        Sign in with your Bluesky account to begin
+      </p>
+      <p className="text-sm mb-5" style={{ color: "var(--body)" }}>
+        Your analyses are yours: reports you publish live in your own AT&nbsp;Protocol
+        repository, not on our servers. No password is shared with this site — you
+        authenticate directly with your identity provider.
       </p>
       {error && <p className="text-sm mb-3" style={{ color: "var(--signal)" }}>{error}</p>}
       <form
@@ -381,12 +407,36 @@ function LoginPanel() {
           {busy ? "Redirecting…" : "Sign in with Bluesky"}
         </button>
       </form>
+      <p className="text-xs mt-4" style={{ color: "var(--muted-ink)" }}>
+        No account? Create one at bsky.app — any AT&nbsp;Protocol identity works.
+      </p>
+    </div>
+  );
+}
+
+function SessionStrip({ session, onLogout }: { session: SessionInfo; onLogout: () => void }) {
+  return (
+    <div className="mb-6 flex items-center justify-between border-b pb-4" style={{ borderColor: "var(--hairline)" }}>
+      <div className="flex items-center gap-3">
+        {session.avatar ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={session.avatar} alt="" className="h-7 w-7" style={{ borderRadius: 0 }} />
+        ) : (
+          <span className="inline-block h-7 w-7" style={{ background: "var(--brand-soft)" }} />
+        )}
+        <span className="text-sm" style={{ color: "var(--body)" }}>
+          {session.displayName || session.handle}{" "}
+          <span style={{ color: "var(--muted-ink)" }}>@{session.handle}</span>
+        </span>
+      </div>
+      <button type="button" className="kicker-muted hover:text-[var(--ink)]" onClick={onLogout}>
+        Sign out
+      </button>
     </div>
   );
 }
 
 function applyEvent(p: StageProgress, e: ProgressEvent): StageProgress {
-  console.debug("[studio] progress event", e);
   switch (e.type) {
     case "stage":
       return { ...p, stage: e.stage };
@@ -423,12 +473,21 @@ function UploadZone({ onFile }: { onFile: (f: File) => void }) {
           if (f) onFile(f);
         }}
       />
-      <p className="kicker mb-3">Step 1 · Upload</p>
+      <p className="kicker mb-3">Step 2 · Upload</p>
       <p className="font-serif text-xl mb-1" style={{ fontFamily: "var(--font-playfair)" }}>
         Drop a CSV here, or click to browse
       </p>
       <p className="text-sm" style={{ color: "var(--muted-ink)" }}>
-        One comment per row · up to {MAX_WEB_COMMENTS} comments per hosted run
+        One comment per row · up to {MAX_WEB_COMMENTS} comments per hosted run ·{" "}
+        <a
+          className="underline hover:text-[var(--brand)]"
+          href="https://github.com/Diegorb1329/broadlistening/blob/main/examples/sample-20.csv"
+          target="_blank"
+          rel="noreferrer"
+          onClick={(e) => e.stopPropagation()}
+        >
+          example CSV
+        </a>
       </p>
     </label>
   );
@@ -442,20 +501,44 @@ function ConfigurePanel(props: {
   setLanguage: (v: string) => void;
   truncateConsent: boolean;
   setTruncateConsent: (v: boolean) => void;
-  onColumnChange: (col: string) => void;
+  onMapping: (m: CsvMapping) => void;
   onRun: () => void;
   onBack: () => void;
 }) {
-  const { phase, title, setTitle, language, setLanguage, truncateConsent, setTruncateConsent, onColumnChange, onRun, onBack } = props;
+  const { phase, title, setTitle, language, setLanguage, truncateConsent, setTruncateConsent, onMapping, onRun, onBack } = props;
   const total = phase.parsed.comments.length;
   const overCap = total > MAX_WEB_COMMENTS;
   const canRun = total > 0 && (!overCap || truncateConsent);
   const inputCls = "w-full border bg-transparent px-3 py-2 text-sm outline-none focus:border-[var(--brand)]";
   const inputStyle = { borderColor: "var(--hairline)", color: "var(--ink)" } as const;
+  const m = phase.mapping;
+
+  const optionalSelect = (
+    id: string,
+    label: string,
+    value: string | undefined,
+    set: (v: string | undefined) => void,
+  ) => (
+    <div>
+      <label className="kicker-muted block mb-1" htmlFor={id}>{label}</label>
+      <select
+        id={id}
+        className={inputCls}
+        style={inputStyle}
+        value={value ?? NONE}
+        onChange={(e) => set(e.target.value === NONE ? undefined : e.target.value)}
+      >
+        <option value={NONE}>—</option>
+        {phase.parsed.columns.map((c) => (
+          <option key={c} value={c}>{c}</option>
+        ))}
+      </select>
+    </div>
+  );
 
   return (
     <div className="card-editorial">
-      <p className="kicker mb-4">Step 2 · Configure</p>
+      <p className="kicker mb-4">Step 3 · Configure</p>
       <div className="mb-5 flex gap-10">
         <div className="stat-column">
           <div className="stat-num">{total}</div>
@@ -476,14 +559,17 @@ function ConfigurePanel(props: {
             id="bl-col"
             className={inputCls}
             style={inputStyle}
-            value={phase.textColumn}
-            onChange={(e) => onColumnChange(e.target.value)}
+            value={m.textColumn}
+            onChange={(e) => onMapping({ ...m, textColumn: e.target.value })}
           >
             {phase.parsed.columns.map((c) => (
               <option key={c} value={c}>{c}</option>
             ))}
           </select>
         </div>
+        {optionalSelect("bl-author", "Author column", m.authorColumn, (v) => onMapping({ ...m, authorColumn: v }))}
+        {optionalSelect("bl-url", "Link column", m.urlColumn, (v) => onMapping({ ...m, urlColumn: v }))}
+        {optionalSelect("bl-ts", "Timestamp column", m.timestampColumn, (v) => onMapping({ ...m, timestampColumn: v }))}
         <div>
           <label className="kicker-muted block mb-1" htmlFor="bl-lang">Report language</label>
           <select id="bl-lang" className={inputCls} style={inputStyle} value={language} onChange={(e) => setLanguage(e.target.value)}>
@@ -496,7 +582,7 @@ function ConfigurePanel(props: {
             <option value="ja">日本語</option>
           </select>
         </div>
-        <div className="sm:col-span-2">
+        <div>
           <label className="kicker-muted block mb-1" htmlFor="bl-title">Report title</label>
           <input id="bl-title" className={inputCls} style={inputStyle} value={title} onChange={(e) => setTitle(e.target.value)} />
         </div>

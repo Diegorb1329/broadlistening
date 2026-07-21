@@ -38,6 +38,24 @@ describe("t3cReportSchema", () => {
             expect(sourceIds.has(q.reference.sourceId)).toBe(true);
   });
 
+  it("accepts the ecocertain report (source links on references AND sources)", () => {
+    const report = parseT3CReport(load("ecocertain.json"));
+    const [, data] = report.data;
+    expect(data.title).toBe("ecocertain.xyz");
+    expect(data.topics).toHaveLength(7);
+    expect(data.sources).toHaveLength(35);
+    // quote-reference links survive parsing
+    const refsWithLink: string[] = [];
+    for (const t of data.topics)
+      for (const s of t.subtopics)
+        for (const c of s.claims)
+          for (const q of c.quotes)
+            if (q.reference.source) refsWithLink.push(q.reference.source);
+    expect(refsWithLink.length).toBeGreaterThan(100);
+    // source-object links survive parsing
+    expect(data.sources.some((s) => s.source?.startsWith("http"))).toBe(true);
+  });
+
   it("rejects structurally invalid reports", () => {
     expect(safeParseT3CReport({}).success).toBe(false);
     expect(safeParseT3CReport({ data: ["v0.1", {}] }).success).toBe(false);

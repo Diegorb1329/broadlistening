@@ -4,6 +4,7 @@ import { basename, join, resolve } from "node:path";
 import { Command } from "commander";
 import { createLLMClient } from "@broadlistening/llm";
 import {
+  detectMapping,
   detectTextColumn,
   parseCommentsCsv,
   runPipeline,
@@ -45,12 +46,13 @@ program
       );
     }
 
+    const detected = detectMapping(probe.columns);
     const parsed = parseCommentsCsv(csvText, {
       textColumn: textColumn!,
-      idColumn: opts.colId,
-      authorColumn: opts.colAuthor,
-      urlColumn: opts.colUrl,
-      timestampColumn: opts.colTimestamp,
+      idColumn: opts.colId ?? detected?.idColumn,
+      authorColumn: opts.colAuthor ?? detected?.authorColumn,
+      urlColumn: opts.colUrl ?? detected?.urlColumn,
+      timestampColumn: opts.colTimestamp ?? detected?.timestampColumn,
     });
     let comments = parsed.comments;
     if (opts.limit) comments = comments.slice(0, opts.limit);
