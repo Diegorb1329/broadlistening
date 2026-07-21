@@ -386,6 +386,7 @@ function LoginPanel() {
 }
 
 function applyEvent(p: StageProgress, e: ProgressEvent): StageProgress {
+  console.debug("[studio] progress event", e);
   switch (e.type) {
     case "stage":
       return { ...p, stage: e.stage };

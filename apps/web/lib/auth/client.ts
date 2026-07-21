@@ -74,6 +74,28 @@ const sessionStore = {
   },
 };
 
+/**
+ * Next.js patches global fetch in a way that loses the body when called with a
+ * Request OBJECT ("fetch failed: expected non-null body source"). The ATProto
+ * DPoP wrapper always builds `new Request(input, init)` — so every
+ * DPoP-authenticated call with a body (e.g. uploadBlob) breaks. Normalize
+ * Request inputs to (url, init) with a buffered body before the platform fetch.
+ * Buffering is fine at our sizes (reports ≤ a few MB).
+ */
+const normalizedFetch: typeof globalThis.fetch = async (input, init) => {
+  if (input instanceof Request && init === undefined) {
+    const body = input.body === null ? undefined : await input.arrayBuffer();
+    return globalThis.fetch(input.url, {
+      method: input.method,
+      headers: input.headers,
+      body,
+      redirect: input.redirect,
+      signal: input.signal,
+    });
+  }
+  return globalThis.fetch(input, init);
+};
+
 let cachedKeyset: Awaited<ReturnType<typeof JoseKey.fromImportable>>[] | null = null;
 
 async function getKeyset() {
@@ -133,6 +155,7 @@ export const createClient = async () => {
     clientMetadata,
     stateStore,
     sessionStore,
+    fetch: normalizedFetch,
   };
   if (keyset) clientConfig.keyset = keyset;
 

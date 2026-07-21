@@ -34,8 +34,11 @@ export async function POST(request: Request): Promise<Response> {
   const [, data] = report.data;
 
   try {
-    const bytes = new TextEncoder().encode(JSON.stringify(report));
-    const upload = await agent.uploadBlob(bytes, { encoding: "application/json" });
+    // String body: the OAuth client's SSRF-safe fetch (custom undici dispatcher)
+    // chokes on Blob/stream bodies under Node 25; strings pass through cleanly.
+    const upload = await agent.uploadBlob(JSON.stringify(report) as never, {
+      encoding: "application/json",
+    });
 
     const claimCount = data.topics.reduce(
       (n, t) =>
@@ -90,6 +93,12 @@ export async function POST(request: Request): Promise<Response> {
     });
   } catch (error) {
     console.error("[api/publish] failed:", error);
+    let cause = (error as Error)?.cause;
+    for (let i = 0; cause && i < 4; i++) {
+      console.error(`[api/publish] cause[${i}]:`, cause);
+      cause = (cause as Error)?.cause;
+    }
+    console.error("[api/publish] stack:", (error as Error)?.stack);
     return NextResponse.json({ error: "publish_failed" }, { status: 502 });
   }
 }

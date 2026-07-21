@@ -53,6 +53,60 @@ const isRetryableCode = (code?: string) =>
   !!code && (RETRYABLE_CODES.has(code) || code.startsWith("provider_5"));
 
 /**
+ * Extract claims for a batch of comments (per-comment failure isolation).
+ * Used internally by runPipeline and directly by the web workflow, which runs
+ * one durable step per batch so progress flushes at batch boundaries.
+ * FATAL_RUN errors propagate; everything else lands on the returned entry.
+ */
+export async function extractCommentsBatch(
+  client: LLMClient,
+  comments: InputComment[],
+  outputLanguage: string,
+  opts: {
+    concurrency?: number;
+    /** existing entries (attempt counts carry over on retry passes) */
+    existing?: Record<string, import("./state.js").CommentExtraction>;
+    onItem?: (commentId: string, ok: boolean) => void;
+  } = {},
+): Promise<{
+  extraction: Record<string, import("./state.js").CommentExtraction>;
+  usage: { inputTokens: number; outputTokens: number };
+}> {
+  const usage = { inputTokens: 0, outputTokens: 0 };
+  const extraction: Record<string, import("./state.js").CommentExtraction> = {};
+  await pooled(comments, opts.concurrency ?? 8, async (comment) => {
+    const prev = opts.existing?.[comment.id];
+    const entry: import("./state.js").CommentExtraction = {
+      status: "pending",
+      attempts: (prev?.attempts ?? 0) + 1,
+    };
+    try {
+      const r = await extractClaims(client, comment.text, outputLanguage);
+      usage.inputTokens += r.usage.inputTokens;
+      usage.outputTokens += r.usage.outputTokens;
+      entry.status = "done";
+      entry.lang = r.data.lang;
+      // cardinality enforced in code, not JSON Schema (Gemini limitation)
+      entry.claims = r.data.claims.slice(0, 5).map((c) => ({
+        id: crypto.randomUUID(),
+        title: c.title,
+        quote: c.quote,
+      }));
+      opts.onItem?.(comment.id, true);
+    } catch (err) {
+      const cls = err instanceof PipelineError ? err.classified : classifyError(err);
+      if (cls.cls === "FATAL_RUN") throw err;
+      entry.status = "failed";
+      entry.errorCode = cls.code;
+      entry.errorMessage = cls.message.slice(0, 500);
+      opts.onItem?.(comment.id, false);
+    }
+    extraction[comment.id] = entry;
+  });
+  return { extraction, usage };
+}
+
+/**
  * The five-stage pipeline (architecture §6). Identical on web and local:
  * web wraps stages in workflow steps via the exported stage functions;
  * the CLI calls runPipeline directly with a state file for resume.
@@ -88,35 +142,23 @@ export async function runPipeline(opts: PipelineOptions): Promise<PipelineResult
   const extractPass = async (targets: InputComment[]) => {
     let done = Object.values(state.extraction).filter((e) => e.status === "done").length;
     let failed = Object.values(state.extraction).filter((e) => e.status === "failed").length;
-    let persistCounter = 0;
-    await pooled(targets, concurrency, async (comment) => {
-      const ext = state.extraction[comment.id]!;
-      ext.attempts++;
-      try {
-        const r = await extractClaims(client, comment.text, lang);
-        addUsage(state, r.usage);
-        ext.status = "done";
-        ext.lang = r.data.lang;
-        // schema cardinality is enforced here, not in JSON Schema (Gemini limitation)
-        ext.claims = r.data.claims.slice(0, 5).map((c) => ({
-          id: crypto.randomUUID(),
-          title: c.title,
-          quote: c.quote,
-        }));
-        delete ext.errorCode;
-        delete ext.errorMessage;
-        done++;
-      } catch (err) {
-        const cls = err instanceof PipelineError ? err.classified : classifyError(err);
-        if (cls.cls === "FATAL_RUN") throw err; // stop the whole run
-        ext.status = "failed";
-        ext.errorCode = cls.code;
-        ext.errorMessage = cls.message.slice(0, 500);
-        failed++;
-      }
-      emit({ type: "extract", done, failed, total: state.comments.length });
-      if (++persistCounter % 20 === 0) await persist(state);
-    });
+    // Process in chunks of 20 so CLI state persists at a useful resume granularity
+    for (let i = 0; i < targets.length; i += 20) {
+      const chunk = targets.slice(i, i + 20);
+      const res = await extractCommentsBatch(client, chunk, lang, {
+        concurrency,
+        existing: state.extraction,
+        onItem: (_id, ok) => {
+          if (ok) done++;
+          else failed++;
+          emit({ type: "extract", done, failed, total: state.comments.length });
+        },
+      });
+      Object.assign(state.extraction, res.extraction);
+      state.usage.inputTokens += res.usage.inputTokens;
+      state.usage.outputTokens += res.usage.outputTokens;
+      await persist(state);
+    }
   };
 
   const pending = state.comments.filter((c) => state.extraction[c.id]?.status === "pending");
