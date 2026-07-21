@@ -1,0 +1,23 @@
+{
+  "name": "@broadlistening/pipeline",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./csv": "./src/csv.ts",
+    "./state": "./src/state.ts"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@broadlistening/llm": "workspace:*",
+    "@broadlistening/schema": "workspace:*",
+    "papaparse": "^5.5.2"
+  },
+  "devDependencies": {
+    "@types/papaparse": "^5.3.15"
+  }
+}

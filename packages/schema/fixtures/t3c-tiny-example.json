@@ -1,0 +1,286 @@
+{
+    "data": [
+      "v0.2",
+      {
+        "title": "tiny_metadata_test",
+        "description": "T3C Pipeline Analysis Results",
+        "date": "2026-02-18T05:14:21.376Z",
+        "addOns": {},
+        "topics": [
+          {
+            "id": "787c7099-5aaa-4867-bc28-3063d2775214",
+            "title": "Welt & Setting",
+            "description": "Welt & Setting",
+            "subtopics": [
+              {
+                "id": "4740a8dd-1a0e-4bd8-a243-e9ffa330b20e",
+                "title": "Fantasy-Elemente",
+                "description": "Fantasy-Elemente",
+                "claims": [
+                  {
+                    "id": "8a906b6f-dee7-45ec-8d0a-719c48d24e7a",
+                    "title": "Es sollte mehr epische Fantasy-Welten geben.",
+                    "quotes": [
+                      {
+                        "id": "ddf897f5-cf8a-4d6f-b73c-bf12d8529377",
+                        "text": "More epic fantasy worlds",
+                        "reference": {
+                          "id": "3f3e3219-59ab-4e44-975d-02bdeec83b7e",
+                          "sourceId": "80f428d9-26ce-4a8e-97e3-63037c12def7",
+                          "interview": "Diego",
+                          "data": [
+                            "text",
+                            {
+                              "startIdx": 0,
+                              "endIdx": 24
+                            }
+                          ],
+                          "source": "www.reddit.com",
+                          "timestamp": "2026-02-17 10:00:00"
+                        }
+                      }
+                    ],
+                    "number": 1,
+                    "similarClaims": []
+                  },
+                  {
+                    "id": "2be6bd36-653c-4e5b-b4e5-3a0d5c140f35",
+                    "title": "Magische Elemente sollten Individuen als besonders und vom Universum geliebt darstellen.",
+                    "quotes": [
+                      {
+                        "id": "8ac9273e-ec68-46cd-851f-2c84a54b5d3b",
+                        "text": "Magical elements where individuals are special and beloved by the universe",
+                        "reference": {
+                          "id": "800dd0dc-1454-42d6-ab68-23b71df4dcbb",
+                          "sourceId": "12a39841-6a8c-4cfb-9123-b66d8123a612",
+                          "interview": "David",
+                          "data": [
+                            "text",
+                            {
+                              "startIdx": 0,
+                              "endIdx": 74
+                            }
+                          ],
+                          "source": "www.reddit.com",
+                          "timestamp": "2026-02-17 10:00:00"
+                        }
+                      }
+                    ],
+                    "number": 2,
+                    "similarClaims": []
+                  }
+                ]
+              },
+              {
+                "id": "58488c34-2a46-4f12-9cca-199a1cd26006",
+                "title": "Weltaufbau",
+                "description": "Weltaufbau",
+                "claims": [
+                  {
+                    "id": "4eae7472-ed78-4755-b63d-39dcc6d8be80",
+                    "title": "Der Weltaufbau ist interessant.",
+                    "quotes": [
+                      {
+                        "id": "5cbf7bc6-1d6f-4d6b-88c9-ba7f10b43a80",
+                        "text": "Interesting world-building",
+                        "reference": {
+                          "id": "36955555-326f-4be2-918b-b8c59fee3b2a",
+                          "sourceId": "e7636550-0d1e-4507-af76-eeae4f5dd898",
+                          "interview": "David",
+                          "data": [
+                            "text",
+                            {
+                              "startIdx": 0,
+                              "endIdx": 26
+                            }
+                          ],
+                          "source": "www.reddit.com",
+                          "timestamp": "2026-02-17 10:00:00"
+                        }
+                      }
+                    ],
+                    "number": 3,
+                    "similarClaims": []
+                  }
+                ]
+              },
+              {
+                "id": "39af22fd-6958-4ed1-bd1c-b67e24fc7bc3",
+                "title": "Gesellschaftsmodelle",
+                "description": "Gesellschaftsmodelle",
+                "claims": [
+                  {
+                    "id": "dabe2edd-5ae0-434e-839f-b23c7e5ec313",
+                    "title": "Es ist wichtig, realistische Wege zu einer Utopie zu diskutieren.",
+                    "quotes": [
+                      {
+                        "id": "dfd5a36e-f2c8-48b8-aad0-f1dea841fc2a",
+                        "text": "Plausible paths to utopia",
+                        "reference": {
+                          "id": "39dabd1c-ab75-4f78-9376-00396f2c9997",
+                          "sourceId": "bca5cfca-8d89-4aac-b6e7-3da60bc85f29",
+                          "interview": "Diego",
+                          "data": [
+                            "text",
+                            {
+                              "startIdx": 0,
+                              "endIdx": 25
+                            }
+                          ],
+                          "source": "www.reddit.com",
+                          "timestamp": "2026-02-17 10:00:00"
+                        }
+                      }
+                    ],
+                    "number": 4,
+                    "similarClaims": []
+                  }
+                ]
+              }
+            ],
+            "topicColor": "brown"
+          },
+          {
+            "id": "6b2df5b3-dbfe-455d-8565-ae5e8d042e7a",
+            "title": "Charaktere & Dialoge",
+            "description": "Charaktere & Dialoge",
+            "subtopics": [
+              {
+                "id": "8d994596-40d9-480c-9bbd-74688bc24635",
+                "title": "Dialogqualit\u00e4t",
+                "description": "Dialogqualit\u00e4t",
+                "claims": [
+                  {
+                    "id": "2cd9d1f5-8512-42cb-8e52-ecac41dfdeb9",
+                    "title": "Gespr\u00e4che zwischen Charakteren sollten besser sein.",
+                    "quotes": [
+                      {
+                        "id": "495090f7-2c2c-4334-bf3a-a5405fd8037e",
+                        "text": "Better conversations between characters",
+                        "reference": {
+                          "id": "b664db7a-a179-4311-b63a-ab31b150e29b",
+                          "sourceId": "fefb68c8-dadd-4ce9-a524-73ffc1946d23",
+                          "interview": "David",
+                          "data": [
+                            "text",
+                            {
+                              "startIdx": 0,
+                              "endIdx": 39
+                            }
+                          ],
+                          "source": "www.reddit.com",
+                          "timestamp": "2026-02-17 10:00:00"
+                        }
+                      }
+                    ],
+                    "number": 5,
+                    "similarClaims": [
+                      {
+                        "id": "fbc63653-8141-4579-92f3-ca24a519b268",
+                        "title": "Die Dialoge zwischen den Charakteren sollten deutlich verbessert werden.",
+                        "quotes": [
+                          {
+                            "id": "376ed7a0-753d-4f2b-93b4-aa0e41c69d98",
+                            "text": "I want much better conversations between characters",
+                            "reference": {
+                              "id": "032381e7-7a4c-4eec-afc2-eb0c0261a006",
+                              "sourceId": "ba3b5796-d405-4128-afdc-0072d5b32a40",
+                              "interview": "Diego",
+                              "data": [
+                                "text",
+                                {
+                                  "startIdx": 0,
+                                  "endIdx": 51
+                                }
+                              ],
+                              "source": "www.reddit.com",
+                              "timestamp": "2026-02-17 10:00:00"
+                            }
+                          }
+                        ],
+                        "number": 6,
+                        "similarClaims": []
+                      }
+                    ]
+                  }
+                ]
+              }
+            ],
+            "topicColor": "blueSky"
+          }
+        ],
+        "sources": [
+          {
+            "id": "80f428d9-26ce-4a8e-97e3-63037c12def7",
+            "interview": "Diego",
+            "data": [
+              "text",
+              {
+                "text": "More epic fantasy worlds"
+              }
+            ]
+          },
+          {
+            "id": "fefb68c8-dadd-4ce9-a524-73ffc1946d23",
+            "interview": "David",
+            "data": [
+              "text",
+              {
+                "text": "Better conversations between characters"
+              }
+            ]
+          },
+          {
+            "id": "e7636550-0d1e-4507-af76-eeae4f5dd898",
+            "interview": "David",
+            "data": [
+              "text",
+              {
+                "text": "Interesting world-building"
+              }
+            ]
+          },
+          {
+            "id": "bca5cfca-8d89-4aac-b6e7-3da60bc85f29",
+            "interview": "Diego",
+            "data": [
+              "text",
+              {
+                "text": "Plausible paths to utopia"
+              }
+            ]
+          },
+          {
+            "id": "12a39841-6a8c-4cfb-9123-b66d8123a612",
+            "interview": "David",
+            "data": [
+              "text",
+              {
+                "text": "Magical elements where individuals are special and beloved by the universe"
+              }
+            ]
+          },
+          {
+            "id": "ba3b5796-d405-4128-afdc-0072d5b32a40",
+            "interview": "Diego",
+            "data": [
+              "text",
+              {
+                "text": "I want much better conversations between characters"
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "metadata": [
+      "v0.2",
+      {
+        "author": "",
+        "duration": 0,
+        "organization": "",
+        "startTimestamp": 1771413261376,
+        "totalCost": ""
+      }
+    ]
+  }

@@ -1,0 +1,22 @@
+{
+  "name": "@broadlistening/cli",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "broadlistening": "./src/index.ts"
+  },
+  "scripts": {
+    "start": "tsx src/index.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@broadlistening/llm": "workspace:*",
+    "@broadlistening/pipeline": "workspace:*",
+    "@broadlistening/schema": "workspace:*",
+    "commander": "^14.0.2"
+  },
+  "devDependencies": {
+    "tsx": "^4.23.1"
+  }
+}

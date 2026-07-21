@@ -1,0 +1,19 @@
+{
+  "name": "@broadlistening/llm",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@ai-sdk/openai-compatible": "^3.0.12",
+    "@broadlistening/schema": "workspace:*",
+    "ai": "^7.0.31",
+    "zod": "^4.4.3"
+  }
+}

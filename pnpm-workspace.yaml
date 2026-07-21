@@ -1,0 +1,9 @@
+packages:
+  - "apps/*"
+  - "packages/*"
+allowBuilds:
+  "@swc/core": true
+  cbor-extract: true
+  core-js: false
+  esbuild: true
+  sharp: true

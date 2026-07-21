@@ -1,0 +1,23 @@
+{
+  "name": "broadlistening",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Broad Listening V3 — comments in, T3C report out, published to the AT Protocol network",
+  "scripts": {
+    "build": "pnpm -r build",
+    "test": "pnpm -r test",
+    "typecheck": "pnpm -r typecheck",
+    "dev": "pnpm --filter @broadlistening/web dev",
+    "cli": "pnpm --filter @broadlistening/cli start"
+  },
+  "packageManager": "pnpm@11.15.1",
+  "engines": {
+    "node": ">=20"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.1",
+    "tsx": "^4.23.1",
+    "typescript": "^7.0.2",
+    "vitest": "^4.1.10"
+  }
+}

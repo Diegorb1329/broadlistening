@@ -1,0 +1,10 @@
+import { createLLMClient, extractClaims, embedTexts, detectLanguage } from "../packages/llm/src/index.js";
+const client = createLLMClient({ apiKey: process.env.OPENROUTER_API_KEY });
+const c1 = await extractClaims(client, "one thing coming up in the debate about the pause letter i really agree with: openai should make a great alignment dataset and alignment evals and release those!", "en");
+console.log("extraction:", JSON.stringify(c1.data, null, 1), "usage:", c1.usage);
+const c2 = await extractClaims(client, "lol ok", "en");
+console.log("quality gate (should be 0 claims):", JSON.stringify(c2.data.claims));
+const lang = await detectLanguage(client, ["Me parece muy bien la propuesta", "No estoy de acuerdo con el precio", "La seguridad es lo primero"]);
+console.log("lang detect:", lang.data);
+const emb = await embedTexts(client, ["hello", "world"]);
+console.log("embeddings:", emb.data.length, "x", emb.data[0].length);
