@@ -38,13 +38,29 @@ You will receive a numbered list of claim titles. Propose topics (2-12) and subt
 Write all titles and descriptions in ${outputLanguage}. Aim for balanced topics; split anything that would swallow more than a third of all claims.${lensBlock(customInstructions)}`;
 }
 
-export function assignmentSystemPrompt(): string {
+export function assignmentSystemPrompt(strict = false): string {
+  const choice = strict
+    ? `- the best-fitting "T.S" subtopic label. "other" is NOT allowed: when no subtopic is a perfect fit, choose the closest one.`
+    : `- the best-fitting "T.S" subtopic label, or
+- "other" if nothing fits.`;
   return `You are classifying claims into a fixed topic map.
 
 You will receive the topic map (topics and subtopics labeled "T.S", e.g. "2.1") and a batch of claims with ids. For EVERY claim id in the batch, return exactly one assignment:
-- the best-fitting "T.S" subtopic label, or
-- "other" if nothing fits.
+${choice}
 Return every claim id you were given, each exactly once. Never invent ids or labels.`;
+}
+
+export function taxonomyExtensionSystemPrompt(outputLanguage: string, customInstructions?: string): string {
+  return `You are extending an existing two-level topic map so that it covers claims that did not fit it.
+
+You will receive the current topic map (numbered topics with their subtopics) and a numbered list of unplaced claim titles. Propose additions so that every unplaced claim has a fitting subtopic:
+- add as FEW subtopics as possible (roughly one per five unplaced claims); each new subtopic must be broad enough to hold several of the unplaced claims;
+- do not create a subtopic for a single claim: claims left without a new subtopic will be placed in the closest existing one;
+- prefer adding new subtopics under an existing topic (set "topic" to that topic's number, e.g. "3");
+- create a new topic (set "topic" to "new") only when several claims clearly do not belong to any existing topic;
+- never create catch-all buckets such as "Other", "Misc" or "Varios"; be specific;
+- do not repeat subtopics that already exist; one-sentence description each.
+Write all titles and descriptions in ${outputLanguage}.${lensBlock(customInstructions)}`;
 }
 
 export function dedupSystemPrompt(outputLanguage: string): string {

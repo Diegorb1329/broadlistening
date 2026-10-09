@@ -1,9 +1,11 @@
 #!/usr/bin/env tsx
+import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
 import { Command } from "commander";
 import { createLLMClient } from "@broadlistening/llm";
 import {
+  createRunState,
   detectMapping,
   detectTextColumn,
   parseCommentsCsv,
@@ -33,6 +35,11 @@ program
   .option("--out <file>", "output report path (default: <csv>.report.json)")
   .option("--json", "emit machine-readable progress events on stdout", false)
   .option("--no-resume", "ignore any existing state file and start fresh")
+  .option("--strict", "no \"Other\" topic: extend the taxonomy and force-assign unplaced claims", false)
+  .option(
+    "--cache <file>",
+    "extraction cache (JSON) reused across runs: only comments whose text, language or lens changed are re-extracted",
+  )
   .action(async (csvPath: string, opts) => {
     const file = resolve(csvPath);
     if (!existsSync(file)) fail(`File not found: ${file}`);
@@ -77,23 +84,55 @@ program
       }
     }
 
+    const params = {
+      title: opts.title ?? basename(file).replace(/\.csv$/i, ""),
+      description: opts.description,
+      outputLanguage: opts.language,
+      customInstructions: opts.instructions,
+    };
+
+    // Extraction cache: key = hash(language, lens, text). Seeds a fresh state so
+    // only new/changed comments hit the LLM; taxonomy onwards always reruns.
+    type CacheEntry = { lang?: string; claims: { id: string; title: string; quote: string }[] };
+    const cacheKey = (text: string) =>
+      createHash("sha256").update(JSON.stringify([opts.language, opts.instructions, text])).digest("hex");
+    const cache: Record<string, CacheEntry> =
+      opts.cache && existsSync(opts.cache) ? JSON.parse(readFileSync(opts.cache, "utf8")) : {};
+    if (opts.cache && !state) {
+      if (opts.language === "auto") fail("--cache needs an explicit --language (the key includes it).");
+      state = createRunState(comments, params);
+      let hits = 0;
+      for (const c of comments) {
+        const hit = cache[cacheKey(c.text)];
+        if (hit) {
+          state.extraction[c.id] = { status: "done", attempts: 1, lang: hit.lang, claims: hit.claims };
+          hits++;
+        }
+      }
+      log(opts, `Cache: ${hits}/${comments.length} comments already extracted; ${comments.length - hits} new`);
+    }
+
     const client = createLLMClient({});
     const started = Date.now();
     try {
       const result = await runPipeline({
         client,
         comments,
-        params: {
-          title: opts.title ?? basename(file).replace(/\.csv$/i, ""),
-          description: opts.description,
-          outputLanguage: opts.language,
-          customInstructions: opts.instructions,
-        },
+        params,
         concurrency: opts.concurrency,
+        strictAssignment: opts.strict,
         state,
         persist: (s) => writeFileSync(stateFile, JSON.stringify(s)),
         onProgress: (e) => progress(opts, e),
       });
+
+      if (opts.cache) {
+        for (const c of result.state.comments) {
+          const e = result.state.extraction[c.id];
+          if (e?.status === "done" && e.claims) cache[cacheKey(c.text)] = { lang: e.lang, claims: e.claims };
+        }
+        writeFileSync(opts.cache, JSON.stringify(cache));
+      }
 
       const report = result.report;
       if (!report) fail("Pipeline stopped before producing a report.");

@@ -35,6 +35,21 @@ export const taxonomyOutputSchema = z.object({
 });
 export type TaxonomyOutput = z.infer<typeof taxonomyOutputSchema>;
 
+/** Stage 3b (strict mode) — extend the taxonomy to cover unplaced claims */
+export const taxonomyExtensionOutputSchema = z.object({
+  additions: z.array(
+    z.object({
+      /** existing topic number ("3") or "new" */
+      topic: z.string(),
+      /** title/description of the new topic (ignored when extending an existing one) */
+      title: z.string(),
+      description: z.string(),
+      subtopics: z.array(z.object({ title: z.string(), description: z.string() })),
+    }),
+  ),
+});
+export type TaxonomyExtensionOutput = z.infer<typeof taxonomyExtensionOutputSchema>;
+
 /** Stage 3 — assign claims to subtopics */
 export const assignmentOutputSchema = z.object({
   assignments: z.array(
