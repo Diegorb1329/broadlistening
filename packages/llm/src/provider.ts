@@ -26,8 +26,8 @@ export const DEFAULT_EMBEDDING_MODEL = "openai/text-embedding-3-small";
  *  - Gateway (hosted demo): plain "provider/model" strings resolved by Vercel AI Gateway.
  */
 export function createLLMClient(config: LLMConfig): LLMClient {
-  const chatModelId = config.chatModel ?? DEFAULT_CHAT_MODEL;
-  const embeddingModelId = config.embeddingModel ?? DEFAULT_EMBEDDING_MODEL;
+  const chatModelId = config.chatModel ?? process.env.BL_CHAT_MODEL ?? DEFAULT_CHAT_MODEL;
+  const embeddingModelId = config.embeddingModel ?? process.env.BL_EMBEDDING_MODEL ?? DEFAULT_EMBEDDING_MODEL;
 
   if (config.gateway) {
     // AI SDK accepts plain model-id strings when AI Gateway is available.

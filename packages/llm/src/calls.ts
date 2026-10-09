@@ -9,6 +9,8 @@ import {
   extractionOutputSchema,
   languageOutputSchema,
   taxonomyOutputSchema,
+  taxonomyExtensionOutputSchema,
+  type TaxonomyExtensionOutput,
   type AssignmentOutput,
   type DedupOutput,
   type ExtractionOutput,
@@ -20,6 +22,7 @@ import {
   extractionSystemPrompt,
   languageDetectionPrompt,
   taxonomySystemPrompt,
+  taxonomyExtensionSystemPrompt,
 } from "./prompts.js";
 
 export interface Usage {
@@ -117,23 +120,46 @@ export interface TaxonomyForAssignment {
   topics: { title: string; subtopics: { title: string }[] }[];
 }
 
-export async function assignClaims(
-  client: LLMClient,
-  taxonomy: TaxonomyForAssignment,
-  claims: { id: string; title: string }[],
-): Promise<CallResult<AssignmentOutput>> {
-  const tree = taxonomy.topics
+function renderTree(taxonomy: TaxonomyForAssignment): string {
+  return taxonomy.topics
     .map(
       (t, ti) =>
         `Topic ${ti + 1}: ${t.title}\n` +
         t.subtopics.map((s, si) => `  ${ti + 1}.${si + 1}: ${s.title}`).join("\n"),
     )
     .join("\n");
+}
+
+export async function extendTaxonomy(
+  client: LLMClient,
+  taxonomy: TaxonomyForAssignment,
+  unplacedTitles: string[],
+  outputLanguage: string,
+  customInstructions?: string,
+): Promise<CallResult<TaxonomyExtensionOutput>> {
+  const prompt = `Current topic map:\n${renderTree(taxonomy)}\n\nUnplaced claims (${unplacedTitles.length}):\n${unplacedTitles
+    .map((t, i) => `${i + 1}. ${t}`)
+    .join("\n")}`;
+  return structuredCall(
+    client,
+    taxonomyExtensionOutputSchema,
+    taxonomyExtensionSystemPrompt(outputLanguage, customInstructions),
+    prompt,
+  );
+}
+
+export async function assignClaims(
+  client: LLMClient,
+  taxonomy: TaxonomyForAssignment,
+  claims: { id: string; title: string }[],
+  strict = false,
+): Promise<CallResult<AssignmentOutput>> {
+  const tree = renderTree(taxonomy);
   const batch = claims.map((c) => `- id=${c.id}: ${c.title}`).join("\n");
   return structuredCall(
     client,
     assignmentOutputSchema,
-    assignmentSystemPrompt(),
+    assignmentSystemPrompt(strict),
     `Topic map:\n${tree}\n\nClaims to classify:\n${batch}`,
   );
 }

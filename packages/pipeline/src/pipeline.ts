@@ -2,6 +2,7 @@ import type { InputComment, RunParams, T3CReport } from "@broadlistening/schema"
 import {
   assignClaims,
   buildTaxonomy,
+  extendTaxonomy,
   detectLanguage,
   embedTexts,
   extractClaims,
@@ -10,6 +11,7 @@ import {
   pooled,
   classifyError,
   type LLMClient,
+  type TaxonomyOutput,
 } from "@broadlistening/llm";
 import { findCandidateGroups } from "./similarity.js";
 import { assembleReport } from "./report.js";
@@ -39,6 +41,12 @@ export interface PipelineOptions {
    * returned state resumes exactly where it stopped.
    */
   stopAfter?: "extract" | "assign" | "consolidate";
+  /**
+   * Strict assignment: claims left unplaced are covered by extending the
+   * taxonomy and re-assigned without an "other" option, so the report has no
+   * "Other" topic (a claim only stays in "other" if every pass fails).
+   */
+  strictAssignment?: boolean;
 }
 
 export interface PipelineResult {
@@ -208,13 +216,17 @@ export async function runPipeline(opts: PipelineOptions): Promise<PipelineResult
   if (!state.taxonomy) {
     state.stage = "taxonomy";
     emit({ type: "stage", stage: "taxonomy" });
-    const r = await buildTaxonomy(client, allClaims.map((c) => c.title), lang, params.customInstructions);
-    addUsage(state, r.usage);
-    // cardinality enforced in code (schema bounds break Gemini constrained decoding)
-    const topics = r.data.topics
-      .map((t) => ({ ...t, subtopics: t.subtopics.slice(0, 8) }))
-      .filter((t) => t.subtopics.length > 0)
-      .slice(0, 12);
+    // cardinality enforced in code (schema bounds break Gemini constrained decoding);
+    // an empty map is retried once — some models occasionally return {"topics": []}
+    let topics: TaxonomyOutput["topics"] = [];
+    for (let attempt = 0; attempt < 2 && topics.length === 0; attempt++) {
+      const r = await buildTaxonomy(client, allClaims.map((c) => c.title), lang, params.customInstructions);
+      addUsage(state, r.usage);
+      topics = r.data.topics
+        .map((t) => ({ ...t, subtopics: t.subtopics.slice(0, 8) }))
+        .filter((t) => t.subtopics.length > 0)
+        .slice(0, 12);
+    }
     if (topics.length === 0) {
       throw new PipelineError({
         cls: "FATAL_RUN",
@@ -237,34 +249,75 @@ export async function runPipeline(opts: PipelineOptions): Promise<PipelineResult
       t.subtopics.forEach((_, si) => valid.add(`${ti}.${si}`)),
     );
     const assignments: Record<string, string> = {};
-    const batches: (typeof allClaims)[] = [];
-    for (let i = 0; i < allClaims.length; i += 50) batches.push(allClaims.slice(i, i + 50));
-    let doneBatches = 0;
-    await pooled(batches, concurrency, async (batch) => {
-      try {
-        const r = await assignClaims(client, taxonomy, batch);
-        addUsage(state, r.usage);
-        const byId = new Map(r.data.assignments.map((a) => [a.claimId, a.subtopic]));
-        for (const claim of batch) {
-          const raw = byId.get(claim.id);
-          // model labels are 1-based "T.S"; normalize to 0-based; anything invalid → other
-          if (raw && raw !== "other") {
-            const m = /^(\d+)\.(\d+)$/.exec(raw.trim());
-            const label = m ? `${Number(m[1]) - 1}.${Number(m[2]) - 1}` : "";
-            assignments[claim.id] = valid.has(label) ? label : "other";
-          } else {
-            assignments[claim.id] = "other";
+    const assignPass = async (claims: typeof allClaims, strict: boolean) => {
+      const batches: (typeof allClaims)[] = [];
+      for (let i = 0; i < claims.length; i += 50) batches.push(claims.slice(i, i + 50));
+      let doneBatches = 0;
+      await pooled(batches, concurrency, async (batch) => {
+        try {
+          const r = await assignClaims(client, taxonomy, batch, strict);
+          addUsage(state, r.usage);
+          const byId = new Map(r.data.assignments.map((a) => [a.claimId, a.subtopic]));
+          for (const claim of batch) {
+            const raw = byId.get(claim.id);
+            // model labels are 1-based "T.S"; normalize to 0-based; anything invalid → other
+            if (raw && raw !== "other") {
+              const m = /^(\d+)\.(\d+)$/.exec(raw.trim());
+              const label = m ? `${Number(m[1]) - 1}.${Number(m[2]) - 1}` : "";
+              assignments[claim.id] = valid.has(label) ? label : "other";
+            } else {
+              assignments[claim.id] = "other";
+            }
           }
+        } catch (err) {
+          const cls = err instanceof PipelineError ? err.classified : classifyError(err);
+          if (cls.cls === "FATAL_RUN") throw err;
+          // graceful degradation: whole batch → other (never dropped)
+          for (const claim of batch) assignments[claim.id] = "other";
+          emit({ type: "warning", message: `assignment batch failed (${cls.code}); ${batch.length} claims → Other` });
         }
-      } catch (err) {
-        const cls = err instanceof PipelineError ? err.classified : classifyError(err);
-        if (cls.cls === "FATAL_RUN") throw err;
-        // graceful degradation: whole batch → other (never dropped)
-        for (const claim of batch) assignments[claim.id] = "other";
-        emit({ type: "warning", message: `assignment batch failed (${cls.code}); ${batch.length} claims → Other` });
+        emit({ type: "assign", done: Math.min(++doneBatches * 50, claims.length), total: claims.length });
+      });
+    };
+    await assignPass(allClaims, false);
+
+    if (opts.strictAssignment) {
+      const unplaced = () => allClaims.filter((c) => assignments[c.id] === "other");
+      if (unplaced().length > 0) {
+        emit({ type: "warning", message: `strict: extending taxonomy for ${unplaced().length} unplaced claims` });
+        try {
+          const r = await extendTaxonomy(
+            client,
+            taxonomy,
+            unplaced().map((c) => c.title),
+            lang,
+            params.customInstructions,
+          );
+          addUsage(state, r.usage);
+          // cap: about one new subtopic per five unplaced claims, so the map does not fragment
+          let budget = Math.max(1, Math.ceil(unplaced().length / 5));
+          for (const add of r.data.additions) {
+            const subs = add.subtopics.filter((st) => st.title.trim()).slice(0, budget);
+            budget -= subs.length;
+            if (subs.length === 0) continue;
+            const n = /^\d+$/.test(add.topic.trim()) ? Number(add.topic) - 1 : -1;
+            const target = taxonomy.topics[n];
+            if (target) target.subtopics.push(...subs);
+            else if (add.title.trim()) taxonomy.topics.push({ title: add.title, description: add.description, subtopics: subs });
+          }
+          taxonomy.topics.forEach((t, ti) => t.subtopics.forEach((_, si) => valid.add(`${ti}.${si}`)));
+        } catch (err) {
+          const cls = err instanceof PipelineError ? err.classified : classifyError(err);
+          if (cls.cls === "FATAL_RUN") throw err;
+          emit({ type: "warning", message: `strict: taxonomy extension failed (${cls.code}); forcing closest fit` });
+        }
+        // up to two forced passes; anything still unplaced stays in "other"
+        for (let pass = 0; pass < 2 && unplaced().length > 0; pass++) await assignPass(unplaced(), true);
+        if (unplaced().length > 0)
+          emit({ type: "warning", message: `strict: ${unplaced().length} claims still unplaced → Other` });
       }
-      emit({ type: "assign", done: ++doneBatches * 50, total: allClaims.length });
-    });
+      state.taxonomy = taxonomy;
+    }
     state.assignments = assignments;
     await persist(state);
   }
